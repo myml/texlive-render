@@ -1,0 +1,22 @@
+<form action="demo.pdf" method="GET">
+  <textarea id="text" name="body">
+    \documentclass[a4paper]{scrartcl}
+    \usepackage{xltxtra}
+    \usepackage{plantuml}
+    
+    \setmainfont[Mapping=tex-text]{WenQuanYi Micro Hei}
+    \begin{document}
+    
+    \subsection{简体中文}
+    每个人生来平等，享有相同的地位和权利。
+    
+    \begin{plantuml}
+      @startuml
+      Alice -> Bob: test
+      @enduml
+    \end{plantuml}
+    
+    \end{document}    
+  </textarea>
+  <button>提交</button>
+</form>
