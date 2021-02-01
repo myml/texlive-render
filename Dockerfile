@@ -1,11 +1,8 @@
-FROM hub.deepin.com/library/golang:1.14 as builder
+FROM golang:1.14 as builder
 COPY ./ /src
 RUN cd /src && go build -mod vendor ./cmd/...
 
-FROM hub.deepin.com/library/debian:latest as lualatex
-
-RUN sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list
-RUN sed -i 's/security.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list
+FROM debian:latest as lualatex
 
 RUN apt-get update -y
 RUN apt-get install -y texlive
