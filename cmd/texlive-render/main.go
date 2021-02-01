@@ -21,6 +21,11 @@ func main() {
 		ROOT = "/tmp"
 	}
 	engine := gin.Default()
+	engine.Use(func(ctx *gin.Context) {
+		ctx.Next()
+		err := ctx.Errors.String()
+		fmt.Fprint(ctx.Writer, err)
+	})
 	engine.GET("/", index())
 	engine.GET("/pdf/:name", latex("lualatex", "pdf"))
 	engine.Run()
@@ -57,8 +62,7 @@ func latex(command string, format string) gin.HandlerFunc {
 		cmd.Dir = path
 		out, err := cmd.CombinedOutput()
 		if err != nil {
-			ctx.AbortWithError(http.StatusInternalServerError, err)
-			os.Stderr.Write(out)
+			ctx.AbortWithError(http.StatusInternalServerError, fmt.Errorf("%w: %s", err, out))
 			return
 		}
 		ctx.File(outfile)
