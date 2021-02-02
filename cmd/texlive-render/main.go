@@ -1,9 +1,13 @@
 package main
 
 import (
+	"bytes"
+	"compress/gzip"
 	"crypto/md5"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -28,7 +32,81 @@ func main() {
 	})
 	engine.GET("/", index())
 	engine.GET("/pdf/:name", latex("lualatex", "pdf"))
+	engine.POST("/pdf/:name", compressed())
+	engine.GET("/pdf/:name/:content", luaLatexV2("lualatex", "pdf"))
+	engine.GET("/pdf", luaLatexV2("lualatex", "pdf"))
 	engine.Run()
+}
+func compressed() gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		var buff bytes.Buffer
+		w := gzip.NewWriter(&buff)
+		n, err := io.Copy(w, ctx.Request.Body)
+		if err != nil {
+			ctx.AbortWithError(http.StatusBadRequest, err)
+			return
+		}
+		w.Close()
+		log.Printf("gzip compressed %v/%v(%f)", buff.Len(), n, float32(buff.Len())/float32(n)*100)
+		ctx.Redirect(http.StatusSeeOther, fmt.Sprintf("./%s/", ctx.Param("name"))+base64.RawURLEncoding.EncodeToString(buff.Bytes()))
+	}
+}
+func luaLatexV2(command string, format string) gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+
+		var buff bytes.Buffer
+		name := ctx.Param("name")
+		if len(name) > 0 {
+			content, err := base64.RawURLEncoding.DecodeString(ctx.Param("content"))
+			if err != nil {
+				ctx.AbortWithError(http.StatusBadRequest, err)
+				return
+			}
+			r, err := gzip.NewReader(bytes.NewReader(content))
+			if err != nil {
+				ctx.AbortWithError(http.StatusBadRequest, err)
+				return
+			}
+			_, err = io.Copy(&buff, r)
+			if err != nil {
+				ctx.AbortWithError(http.StatusBadRequest, err)
+				return
+			}
+		} else {
+			resp, err := http.Get(ctx.Query("url"))
+			if err != nil {
+				ctx.AbortWithError(http.StatusBadRequest, err)
+				return
+			}
+			defer resp.Body.Close()
+			_, err = io.Copy(&buff, resp.Body)
+
+			if err != nil {
+				ctx.AbortWithError(http.StatusBadRequest, err)
+				return
+			}
+			name = base64.RawURLEncoding.EncodeToString([]byte(ctx.Query("url")))
+		}
+
+		path := filepath.Join(ROOT, name)
+		infile := filepath.Join(path, name+".tex")
+		outfile := filepath.Join(path, name+"."+format)
+		os.Mkdir(path, 0766)
+
+		err := ioutil.WriteFile(infile, buff.Bytes(), 0644)
+		if err != nil {
+			ctx.AbortWithError(http.StatusInternalServerError, err)
+			return
+		}
+		cmd := exec.CommandContext(ctx, command, "--output-format="+format, "--shell-escape", infile)
+		cmd.Dir = path
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			ctx.AbortWithError(http.StatusInternalServerError, fmt.Errorf("%w: %s", err, out))
+			return
+		}
+		ctx.File(outfile)
+	}
 }
 
 func latex(command string, format string) gin.HandlerFunc {
